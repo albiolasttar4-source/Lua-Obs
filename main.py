@@ -1,40 +1,5 @@
-import discord
-from discord import app_commands
-import random
-import base64
-import string
-import io
-import os
-import threading
-from flask import Flask, request, render_template_string, send_file
-
-# ===================== FLASK WEB =====================
-app = Flask(__name__)
-
-HTML = '''<!DOCTYPE html>
-<html>
-<head><title>Sttar MoonSec Obfuscator</title>
-<style>
-    body {font-family: Arial; background:#0a0a0a; color:#00ff88; padding:30px;}
-    textarea {width:100%; height:350px; background:#1a1a1a; color:#00ff88; border:2px solid #00ff88;}
-    button {padding:12px 30px; background:#00ff88; color:black; font-weight:bold; border:none; font-size:16px;}
-</style>
-</head>
-<body>
-    <h1>🚀 Sttar MoonSec Obfuscator v3.1</h1>
-    <form method="POST" enctype="multipart/form-data">
-        <textarea name="code" placeholder="Paste your Lua script here..."></textarea><br><br>
-        <input type="file" name="file" accept=".lua,.txt"><br><br>
-        <button type="submit">🔒 Obfuscate Now</button>
-    </form>
-</body>
-</html>'''
-
-@app.route('/', methods=['GET', 'POST'])
-def index():
-    if request.method == 'POST':
-        code = None
-        if 'file' in request.files and request.files['file'].filename:
+discord.py
+flask        if 'file' in request.files and request.files['file'].filename:
             code = request.files['file'].read().decode('utf-8', errors='ignore')
         else:
             code = request.form.get('code')
