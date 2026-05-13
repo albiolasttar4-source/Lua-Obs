@@ -1,40 +1,164 @@
-discord.py
-flask        if 'file' in request.files and request.files['file'].filename:
-            code = request.files['file'].read().decode('utf-8', errors='ignore')
-        else:
-            code = request.form.get('code')
-        
-        if code:
-            obf = moonsec_obfuscate(code)
-            return send_file(io.BytesIO(obf.encode()), as_attachment=True, download_name="Sttar_MoonSec_Protected.lua")
-    return render_template_string(HTML)
+import discord
+from discord import app_commands
+import random
+import base64
+import string
+import io
+import os
+import threading
+from flask import Flask, request, render_template_string, send_file
 
-# ===================== MOONSEC OBFUSCATOR =====================
+# --- FLASK CONFIGURATION ---
+app = Flask(__name__)
+
+HTML = '''<!DOCTYPE html>
+<html>  
+<head>
+    <title>Sttar MoonSec V3.5</title>  
+    <style>  
+        body {font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background:#0a0a0a; color:#00ff88; padding:30px; text-align:center;}  
+        .container {max-width: 800px; margin: auto; background: #111; padding: 20px; border-radius: 10px; border: 1px solid #00ff88; box-shadow: 0 0 20px #00ff8844;}
+        textarea {width:100%; height:300px; background:#1a1a1a; color:#00ff88; border:1px solid #333; padding:10px; font-family: monospace; margin-bottom: 20px;}  
+        button {padding:15px 40px; background:#00ff88; color:black; font-weight:bold; border:none; cursor:pointer; border-radius: 5px; transition: 0.3s;}  
+        button:hover {background:#00cc6e; transform: scale(1.05);}
+        h1 {text-shadow: 0 0 10px #00ff88;}
+    </style>  
+</head>  
+<body>  
+    <div class="container">
+        <h1>🚀 STTAR MOONSEC V3.5</h1>  
+        <p>Premium Lua Obfuscation (AI-Proof & Delta Ready)</p>
+        <form method="POST">  
+            <textarea name="code" placeholder="I-paste ang iyong Lua script dito..."></textarea><br>  
+            <button type="submit">🔒 PROTECT SCRIPT</button>  
+        </form>  
+    </div>
+</body>  
+</html>'''
+
+# --- OBFUSCATION CORE ---
 def generate_random_var():
-    return "_" + ''.join(random.choices(string.ascii_letters + string.digits, k=10))
+    return "_" + ''.join(random.choices(string.ascii_letters, k=random.randint(10, 15)))
 
 def moonsec_obfuscate(lua_code: str) -> str:
-    key = random.randint(0x70, 0xFF)
+    # 1. Rolling XOR Encryption
+    seed = random.randint(60, 200)
+    encoded_bytes = []
+    for i, char in enumerate(lua_code):
+        # Ang bawat character ay may kakaibang transformation base sa index
+        transformed = (ord(char) ^ (seed + i)) % 256
+        encoded_bytes.append(transformed)
     
-    # XOR Encryption
-    encrypted = ''.join(chr(ord(c) ^ key) for c in lua_code)
-    b64 = base64.b64encode(encrypted.encode('utf-8')).decode('utf-8')
+    byte_table = "{" + ",".join(map(str, encoded_bytes)) + "}"
+    
+    # 2. Variable Randomization
+    v = {n: generate_random_var() for n in ['table', 'key', 'res', 'i', 'v', 'step', 'func', 'junk', 'bit']}
+    
+    # 3. Lua Loader Construction (Using bit32 for Roblox compatibility)
+    obf_script = f'''--[[ 
+    STTAR MOONSEC V3.5 PREMIUM
+    Protected for Delta Executor
+    ]]
+    local {v['table']} = {byte_table}
+    local {v['key']} = {seed}
+    local {v['res']} = ""
+    local {v['bit']} = bit32 or bit
 
-    v = {name: generate_random_var() for name in ['xor', 'b64dec', 'dec', 'vm', 'j1', 'j2', 'p']}
-
-    # Watermark na gusto mo
-    obf = f'''-- Obfuscated by: Sttar MoonSec Bot
--- Discord Server: https://discord.gg/88SfW7RvhC
--- [ Sttar MoonSec V3.1 ] Protected
-
-local {v['xor']} = function(s, k)
-    local r = {{}}
-    for i = 1, #s do
-        r[i] = string.char(string.byte(s, i) \~ k)
+    local function {v['junk']}(...)
+        local d = {{...}}
+        local r = 0
+        for i=1, #d do r = r + i end
+        return r
     end
-    return table.concat(r)
-end
 
+    for {v['i']}, {v['v']} in ipairs({v['table']}) do
+        -- Rolling Decryption Logic
+        local {v['step']} = {v['bit']}.bxor({v['v']}, ({v['key']} + ({v['i']} - 1))) % 256
+        {v['res']} = {v['res']} .. string.char({v['step']})
+        if {v['i']} % 100 == 0 then {v['junk']}({v['i']}) end
+    end
+
+    local {v['func']}, {v['junk']} = loadstring({v['res']})
+    if {v['func']} then
+        {v['func']}()
+    else
+        warn("TAMPERING DETECTED: CODE CORRUPTED")
+    end
+    '''
+    
+    # 4. Bloating (Mass Junk Variables to confuse AI)
+    bloat = ""
+    for _ in range(20):
+        bloat += f"local {generate_random_var()} = {random.randint(1000, 99999)}; "
+        
+    return bloat + "\n" + obf_script
+
+# --- FLASK ROUTES ---
+@app.route('/', methods=['GET', 'POST'])
+def index():
+    if request.method == 'POST':
+        code = request.form.get('code')
+        if code:
+            protected = moonsec_obfuscate(code)
+            return send_file(
+                io.BytesIO(protected.encode()), 
+                as_attachment=True, 
+                download_name="Protected_MoonSec.lua"
+            )
+    return render_template_string(HTML)
+
+# --- DISCORD BOT ---
+class MoonSecBot(discord.Client):
+    def __init__(self):
+        super().__init__(intents=discord.Intents.default())
+        self.tree = app_commands.CommandTree(self)
+
+    async def setup_hook(self):
+        await self.tree.sync()
+        print(f"Slash Commands Synced for {self.user}")
+
+client = MoonSecBot()
+
+@client.tree.command(name="obfuscate", description="Encrypt your Lua script (AI-Proof)")
+@app_commands.describe(file="I-upload ang .lua o .txt file na i-oobfuscate")
+async def obfuscate(interaction: discord.Interaction, file: discord.Attachment):
+    await interaction.response.defer(ephemeral=True)
+    
+    if not file.filename.endswith(('.lua', '.txt')):
+        await interaction.followup.send("❌ Error: Valid .lua or .txt files only!")
+        return
+
+    try:
+        raw_code = (await file.read()).decode('utf-8', errors='ignore')
+        protected_code = moonsec_obfuscate(raw_code)
+        
+        output = io.BytesIO(protected_code.encode())
+        discord_file = discord.File(output, filename=f"Protected_{file.filename}")
+        
+        embed = discord.Embed(title="🔒 MoonSec V3.5 Protected", color=0x00ff88)
+        embed.add_field(name="Status", value="✅ Encrypted", inline=True)
+        embed.add_field(name="Target", value="Delta / Roblox", inline=True)
+        embed.set_footer(text="Anti-AI & Anti-Deobfuscation Enabled")
+        
+        await interaction.followup.send(embed=embed, file=discord_file)
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error: {str(e)}")
+
+# --- RUNTIME ---
+def run_web():
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
+
+if __name__ == "__main__":
+    # Start Web Server in Background
+    threading.Thread(target=run_web, daemon=True).start()
+    
+    # Start Discord Bot
+    token = os.getenv("DISCORD_TOKEN")
+    if token:
+        client.run(token)
+    else:
+        print("CRITICAL: DISCORD_TOKEN is not set in Environment Variables!")
 -- Self-contained Base64 Decoder
 local {v['b64dec']} = function(data)
     local b = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
