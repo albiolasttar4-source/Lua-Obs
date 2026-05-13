@@ -8,33 +8,73 @@ import os
 import threading
 from flask import Flask, request, render_template_string, send_file
 
-# --- FLASK CONFIGURATION ---
+# --- WEB UI CONFIG ---
 app = Flask(__name__)
 
-HTML = '''<!DOCTYPE html>
-<html>  
-<head>
-    <title>Sttar MoonSec V3.5</title>  
-    <style>  
-        body {font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background:#0a0a0a; color:#00ff88; padding:30px; text-align:center;}  
-        .container {max-width: 800px; margin: auto; background: #111; padding: 20px; border-radius: 10px; border: 1px solid #00ff88; box-shadow: 0 0 20px #00ff8844;}
-        textarea {width:100%; height:300px; background:#1a1a1a; color:#00ff88; border:1px solid #333; padding:10px; font-family: monospace; margin-bottom: 20px;}  
-        button {padding:15px 40px; background:#00ff88; color:black; font-weight:bold; border:none; cursor:pointer; border-radius: 5px; transition: 0.3s;}  
-        button:hover {background:#00cc6e; transform: scale(1.05);}
-        h1 {text-shadow: 0 0 10px #00ff88;}
-    </style>  
-</head>  
-<body>  
-    <div class="container">
-        <h1>🚀 STTAR MOONSEC V3.5</h1>  
-        <p>Premium Lua Obfuscation (AI-Proof & Delta Ready)</p>
-        <form method="POST">  
-            <textarea name="code" placeholder="I-paste ang iyong Lua script dito..."></textarea><br>  
-            <button type="submit">🔒 PROTECT SCRIPT</button>  
-        </form>  
-    </div>
-</body>  
-</html>'''
+@app.route('/', methods=['GET', 'POST'])
+def index():
+    if request.method == 'POST':
+        code = request.form.get('code')
+        if code:
+            protected = moonsec_obfuscate(code)
+            return send_file(io.BytesIO(protected.encode()), as_attachment=True, download_name="Protected.lua")
+    return render_template_string("<h1>Bot is Online!</h1>")
+
+# --- OBFUSCATOR LOGIC ---
+def generate_var():
+    return "_" + ''.join(random.choices(string.ascii_letters, k=12))
+
+def moonsec_obfuscate(code: str) -> str:
+    key = random.randint(50, 200)
+    # Byte-based Rolling XOR
+    bytes_data = [(ord(c) ^ (key + i)) % 256 for i, c in enumerate(code)]
+    byte_str = "{" + ",".join(map(str, bytes_data)) + "}"
+    
+    v = {n: generate_var() for n in ['t', 'k', 'r', 'i', 'v', 's', 'f', 'b']}
+    
+    return f'''
+local {v['t']} = {byte_str}
+local {v['k']} = {key}
+local {v['r']} = ""
+local {v['b']} = bit32 or bit
+
+for {v['i']}, {v['v']} in ipairs({v['t']}) do
+    local {v['s']} = {v['b']}.bxor({v['v']}, ({v['k']} + ({v['i']} - 1))) % 256
+    {v['r']} = {v['r']} .. string.char({v['s']})
+end
+
+local {v['f']} = loadstring({v['r']})
+if {v['f']} then {v['f']}() else warn("Error!") end
+'''
+
+# --- DISCORD BOT ---
+class MyBot(discord.Client):
+    def __init__(self):
+        super().__init__(intents=discord.Intents.default())
+        self.tree = app_commands.CommandTree(self)
+    async def setup_hook(self):
+        await self.tree.sync()
+
+bot = MyBot()
+
+@bot.tree.command(name="obfuscate", description="Secure your Lua script")
+async def obf_cmd(interaction: discord.Interaction, file: discord.Attachment):
+    await interaction.response.defer(ephemeral=True)
+    if not file.filename.endswith(('.lua', '.txt')):
+        return await interaction.followup.send("Lua/Txt files only!")
+    
+    content = (await file.read()).decode('utf-8', errors='ignore')
+    result = moonsec_obfuscate(content)
+    await interaction.followup.send(file=discord.File(io.BytesIO(result.encode()), "Protected.lua"))
+
+# --- RUN ---
+if __name__ == "__main__":
+    threading.Thread(target=lambda: app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000))), daemon=True).start()
+    token = os.getenv("DISCORD_TOKEN")
+    if token:
+        bot.run(token)
+    else:
+        print("MISSING DISCORD_TOKEN!")</html>'''
 
 # --- OBFUSCATION CORE ---
 def generate_random_var():
