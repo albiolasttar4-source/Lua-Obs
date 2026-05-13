@@ -7,11 +7,10 @@ from discord.ext import commands
 from discord import app_commands
 from flask import Flask, jsonify
 
-# ------------------ CONFIG ------------------
 TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 MAX_LEN = 50000
 
-# ------------------ OBFUSCATOR ENGINE ------------------
+# ------------------ OBFUSCATOR ------------------
 class Obfuscator:
     def __init__(self):
         self.vocab = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_"
@@ -22,12 +21,13 @@ class Obfuscator:
     def obf_num(self, n):
         if abs(n) < 10:
             return str(n)
-        opts = [
-            str(n),
-            f"({random.randint(1,99)}+{n - random.randint(1,99)})",
-            f"(0x{int(n):x})"
-        ]
-        return random.choice(opts)
+        r = random.choice([1,2,3])
+        if r == 1:
+            return str(n)
+        elif r == 2:
+            return f"({random.randint(1,99)}+{n - random.randint(1,99)})"
+        else:
+            return f"(0x{int(n):x})"
 
     def obf_str(self, s):
         if len(s) < 3:
@@ -36,24 +36,26 @@ class Obfuscator:
         return f'loadstring(table.concat({{{bytes_vals}}},""))()'
 
     def obfuscate(self, code):
-        # obf strings
-        def repl_str(m):
-            q = m.group(1)
-            content = m.group(2)
+        # Obfuscate strings: find "..." or '...'
+        def repl_str(match):
+            quote = match.group(1)
+            content = match.group(2)
             return self.obf_str(content)
-        code = re.sub(r'(["'])(.*?)\1', repl_str, code)
+        # Pattern: (["'])(.*?)\1
+        pattern = r'(["\'])(.*?)\1'
+        code = re.sub(pattern, repl_str, code, flags=re.DOTALL)
 
-        # obf numbers
-        def repl_num(m):
-            num = m.group(0)
-            if "." in num:
-                n = float(num)
+        # Obfuscate numbers
+        def repl_num(match):
+            num_str = match.group(0)
+            if '.' in num_str:
+                n = float(num_str)
             else:
-                n = int(num)
+                n = int(num_str)
             return self.obf_num(n)
         code = re.sub(r'\b\d+(?:\.\d+)?\b', repl_num, code)
 
-        # dead code injection (3 times)
+        # Inject dead code 3 times
         for _ in range(3):
             dead = f"""
 if ({random.choice(["true==false","1==2","false"])}) then
@@ -65,7 +67,7 @@ end
             lines.insert(pos, dead)
             code = "\n".join(lines)
 
-        # anti-debug header
+        # Anti-debug header
         anti = """
 local function _s()
     if debug and debug.getinfo then error("debug blocked") end
@@ -92,7 +94,9 @@ async def slash_obf(interaction: discord.Interaction, script: str, public: bool 
         await interaction.followup.send(f"❌ Max {MAX_LEN} chars")
         return
 
-    if re.search(r"(getfenv|setfenv|loadstring|dofile|loadfile)", script, re.I):
+    # Block dangerous functions
+    dangerous = re.compile(r'(getfenv|setfenv|loadstring|dofile|loadfile)', re.I)
+    if dangerous.search(script):
         await interaction.followup.send("❌ Contains blocked functions")
         return
 
@@ -131,8 +135,6 @@ def run_flask():
 
 # ------------------ MAIN ------------------
 if __name__ == "__main__":
-    # Start Discord bot in background thread
     discord_thread = threading.Thread(target=run_discord)
     discord_thread.start()
-    # Run Flask in main thread (for Render)
     run_flask()
